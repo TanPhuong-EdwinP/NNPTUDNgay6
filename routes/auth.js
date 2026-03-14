@@ -1,11 +1,11 @@
 let express = require('express')
 let router = express.Router()
 let userController = require('../controllers/users')
-let { RegisterValidator, validatedResult } = require('../utils/validator')
+let { RegisterValidator, ChangePasswordValidator, validatedResult } = require('../utils/validator')
 let bcrypt = require('bcrypt')
 let jwt = require('jsonwebtoken')
-const { check } = require('express-validator')
 const { checkLogin } = require('../utils/authHandler')
+const { privateKey } = require('../utils/generateKeys')
 
 router.post('/register', RegisterValidator, validatedResult, async function (req, res, next) {
     try {
@@ -40,7 +40,8 @@ router.post('/login', async function (req, res, next) {
             await user.save();
             let token = jwt.sign({
                 id: user._id,
-            }, 'secret', {
+            }, privateKey, {
+                algorithm: 'RS256',
                 expiresIn: '1h'
             })
             res.send(token)
@@ -66,57 +67,19 @@ router.get('/me',checkLogin, function (req,res,next) {
     res.send(req.user)
 })
 
-router.post('/changepassword', checkLogin, async function (req, res, next) {
+router.post('/changepassword', checkLogin, ChangePasswordValidator, validatedResult, async function (req, res, next) {
     try {
-        let { oldPassword, newPassword } = req.body;
+        let { oldpassword, newpassword } = req.body;
 
-        // Validate input
-        if (!oldPassword || !newPassword) {
-            return res.status(400).send({
-                message: "oldPassword và newPassword là bắt buộc"
-            })
-        }
-
-        // Validate newPassword (ít nhất 8 ký tự, có chữ hoa, chữ thường, số)
-        if (newPassword.length < 8) {
-            return res.status(400).send({
-                message: "Mật khẩu mới phải có ít nhất 8 ký tự"
-            })
-        }
-
-        if (!/[A-Z]/.test(newPassword)) {
-            return res.status(400).send({
-                message: "Mật khẩu mới phải chứa ít nhất 1 chữ hoa"
-            })
-        }
-
-        if (!/[a-z]/.test(newPassword)) {
-            return res.status(400).send({
-                message: "Mật khẩu mới phải chứa ít nhất 1 chữ thường"
-            })
-        }
-
-        if (!/[0-9]/.test(newPassword)) {
-            return res.status(400).send({
-                message: "Mật khẩu mới phải chứa ít nhất 1 chữ số"
-            })
-        }
-
-        // Lấy user hiện tại từ token
         let user = req.user;
 
-        // Kiểm tra oldPassword có đúng không
-        if (!bcrypt.compareSync(oldPassword, user.password)) {
+        if (!bcrypt.compareSync(oldpassword, user.password)) {
             return res.status(400).send({
                 message: "Mật khẩu cũ không đúng"
             })
         }
 
-        // Hash mật khẩu mới
-        let hashedPassword = bcrypt.hashSync(newPassword, 10);
-
-        // Update mật khẩu
-        user.password = hashedPassword;
+        user.password = newpassword;
         await user.save();
 
         res.send({
